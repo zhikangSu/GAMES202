@@ -13,7 +13,7 @@ async function loadShaderFile(filename) {
 async function getShaderString(filename) {
 
     let val = ''
-    await this.loadShaderFile(filename).then(result => {
+    await loadShaderFile(filename).then(result => {
         val = result;
     });
     //console.log(val);
