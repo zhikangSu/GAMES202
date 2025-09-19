@@ -26,7 +26,7 @@ class WebGLRenderer {
         gl.depthFunc(gl.LEQUAL); // Near things obscure far things
 
         console.assert(this.lights.length != 0, "No light");
-        console.assert(this.lights.length == 1, "Multiple lights");
+        // console.assert(this.lights.length == 1, "Multiple lights");
 
         //角度转弧度
         function degrees2Radians(degrees) {
@@ -48,13 +48,22 @@ class WebGLRenderer {
 
             // Draw light
             // TODO: Support all kinds of transform
-            this.lights[l].meshRender.mesh.transform.translate = this.lights[l].entity.lightPos;
+            // this.lights[l].meshRender.mesh.transform.translate = this.lights[l].entity.lightPos;
+            //Edit Start 灯光围绕原点旋转
+            let lightRotateSpped = [10, 80]
+            let lightPos = this.lights[l].entity.lightPos;
+            lightPos = vec3.rotateY(lightPos, lightPos, this.lights[l].entity.focalPoint, degrees2Radians(lightRotateSpped[l]) * deltaime);
+            this.lights[l].entity.lightPos = lightPos; //给DirectionalLight的lightPos赋值新的位置，CalcLightMVP计算LightMVP需要用到
+            this.lights[l].meshRender.mesh.transform.translate = lightPos;
+
             this.lights[l].meshRender.draw(this.camera);
 
             // Shadow pass
             if (this.lights[l].entity.hasShadowMap == true) {
 
                 for (let i = 0; i < this.shadowMeshes.length; i++) {
+                    if (this.shadowMeshes[i].material.lightIndex != l)
+                        continue;// 是当前光源的材质才绘制，否则跳过
                     // Edit Start 每帧更新shader中uniforms的LightMVP
                     this.gl.useProgram(this.shadowMeshes[i].shader.program.glShaderProgram);
                     let translation = this.shadowMeshes[i].mesh.transform.translate;
@@ -68,8 +77,19 @@ class WebGLRenderer {
 
             }
 
+            // Edit Start 非第一个光源Pass时进行一些设置（Base Pass和Additional Pass区分）
+            if (l != 0) {
+                // 开启混合，把Additional Pass混合到Base Pass结果上，否则会覆盖Base Pass的渲染结果
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.ONE, gl.ONE);
+            }
+            // Edit End
+
             // Camera pass
             for (let i = 0; i < this.meshes.length; i++) {
+                if (this.meshes[i].material.lightIndex != l)
+                    continue;// 是当前光源的材质才绘制，否则跳过
+
                 this.gl.useProgram(this.meshes[i].shader.program.glShaderProgram);
                 // Edit Start 每帧更新shader中uniforms参数
                 // this.gl.uniform3fv(this.meshes[i].shader.program.uniforms.uLightPos, this.lights[l].entity.lightPos); //这里改用下面写法
@@ -82,6 +102,9 @@ class WebGLRenderer {
                 // Edit End
                 this.meshes[i].draw(this.camera);
             }
+            // Edit Start 还原Additional Pass的设置
+            gl.disable(gl.BLEND);
+            // Edit End
         }
     }
 }

@@ -46,11 +46,17 @@ function GAMES202Main() {
 
 	// Add lights
 	// light - is open shadow map == true
-	let lightPos = [0, 80, 80];
+	let lightPos1 = [0, 80, 80];
 	let focalPoint = [0, 0, 0];
 	let lightUp = [0, 1, 0]
-	const directionLight = new DirectionalLight(5000, [1, 1, 1], lightPos, focalPoint, lightUp, true, renderer.gl);
+	const directionLight = new DirectionalLight(2500, [1, 1, 1], lightPos1, focalPoint, lightUp, true, renderer.gl);
 	renderer.addLight(directionLight);
+
+	//Edit Start 添加第二个光源
+	let lightPos2 = [90, 90, 0];
+	const directionLight2 = new DirectionalLight(2500, [1, 1, 1], lightPos2, focalPoint, lightUp, true, renderer.gl);
+	renderer.addLight(directionLight2);
+	//Edit End
 
 	// Add shapes
 

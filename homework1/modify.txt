@@ -1,0 +1,197 @@
+动态多光源
+要支持多光源同样需要改不少地方，不知道是框架没考虑作业的提高部分，还是故意为之，GAMES这两门渲染课程一直都是注重图形学本身，轻工程部分，尽量提供完善框架，大家只需要填空实现即可，但这个作业的提高部分目前看来需要改的地方也太多了点。
+
+由于在WebGLRenderer中只用了两个数组区分了Shadow Pass的MeshRender和Camera Pass的MeshRender，在多光源情况下，我们把不同光源对应的MeshRender也会添加到其中，我们需要做一个区分，避免在每一轮的光源渲染中都把所有光源包含的MeshRender都Draw了一次，但框架现有代码似乎没有太好的方式可以区分，我决定给Material类添加一个lightIndex字段表示对应光源，修改如下：
+
+//Material.js
+
+//Edit Start 添加lightIndex参数
+constructor(uniforms, attribs, vsSrc, fsSrc, frameBuffer, lightIndex) {
+//Edit End 
+    this.uniforms = uniforms;
+    this.attribs = attribs;
+    this.#vsSrc = vsSrc;
+    this.#fsSrc = fsSrc;
+    
+    this.#flatten_uniforms = ['uViewMatrix','uModelMatrix', 'uProjectionMatrix', 'uCameraPos', 'uLightPos'];
+    for (let k in uniforms) {
+        this.#flatten_uniforms.push(k);
+    }
+    this.#flatten_attribs = attribs;
+
+    this.frameBuffer = frameBuffer;
+    //Edit Start 添加lightIndex字段
+    this.lightIndex = lightIndex;
+    //Edit End
+}
+//ShadowMaterial.js
+
+class ShadowMaterial extends Material {
+//Edit Start 添加rotate、lightIndex参数
+    constructor(light, translate, rotate, scale, lightIndex, vertexShader, fragmentShader) {
+        let lightMVP = light.CalcLightMVP(translate, rotate, scale);
+//Edit End
+        super({
+            'uLightMVP': { type: 'matrix4fv', value: lightMVP }
+        //Edit Start lightIndex参数
+        }, [], vertexShader, fragmentShader, light.fbo, lightIndex);
+        //Edit End
+    }
+}
+
+//Edit Start 添加rotate、lightIndex参数
+async function buildShadowMaterial(light, translate, rotate, scale, lightIndex, vertexPath, fragmentPath) {
+//Edit End
+
+    let vertexShader = await getShaderString(vertexPath);
+    let fragmentShader = await getShaderString(fragmentPath);
+//Edit Start 添加rotate、lightIndex参数
+    return new ShadowMaterial(light, translate, rotate, scale, lightIndex, vertexShader, fragmentShader);
+//Edit End
+}
+//PhongMaterial.js
+
+class PhongMaterial extends Material {
+//Edit Start 添加rotate、lightIndex参数
+    constructor(color, specular, light, translate, rotate, scale, lightIndex, vertexShader, fragmentShader) {
+        let lightMVP = light.CalcLightMVP(translate, rotate, scale);
+//Edit End
+        let lightIntensity = light.mat.GetIntensity();
+
+        super({
+            // Phong
+            'uSampler': { type: 'texture', value: color },
+            'uKs': { type: '3fv', value: specular },
+            'uLightIntensity': { type: '3fv', value: lightIntensity },
+            // Shadow
+            'uShadowMap': { type: 'texture', value: light.fbo },
+            'uLightMVP': { type: 'matrix4fv', value: lightMVP },
+        //Edit Start 添加lightIndex参数
+        }, [], vertexShader, fragmentShader, null, lightIndex);
+        //Edit End
+    }
+}
+
+//Edit Start 添加rotate、lightIndex参数
+async function buildPhongMaterial(color, specular, light, translate, rotate, scale, lightIndex, vertexPath, fragmentPath) {
+//Edit End
+
+    let vertexShader = await getShaderString(vertexPath);
+    let fragmentShader = await getShaderString(fragmentPath);
+//Edit Start 添加rotate、lightIndex参数
+    return new PhongMaterial(color, specular, light, translate, rotate, scale, lightIndex, vertexShader, fragmentShader);
+//Edit End
+}
+//loadOBJ.js
+
+let material, shadowMaterial;
+let Translation = [transform.modelTransX, transform.modelTransY, transform.modelTransZ];
+//Edit Start 添加旋转参数
+let Rotation = [transform.modelRotateX, transform.modelRotateY, transform.modelRotateZ];
+//Edit End
+let Scale = [transform.modelScaleX, transform.modelScaleY, transform.modelScaleZ];
+
+//Edit Start 原本只添加第一个light的材质，改成添加所有light的材质，并添加旋转参数
+for(let i = 0; i < renderer.lights.length; i++){
+	let light = renderer.lights[i].entity;
+	switch (objMaterial) {
+		case 'PhongMaterial':
+			//Edit Start 添加旋转参数、光源索引参数
+			material = buildPhongMaterial(colorMap, mat.specular.toArray(), light, Translation, Rotation, Scale, i, "./src/shaders/phongShader/phongVertex.glsl", "./src/shaders/phongShader/phongFragment.glsl");
+			shadowMaterial = buildShadowMaterial(light, Translation, Rotation, Scale, i, "./src/shaders/shadowShader/shadowVertex.glsl", "./src/shaders/shadowShader/shadowFragment.glsl");
+			//Edit End
+			break;
+	}
+
+	material.then((data) => {
+		let meshRender = new MeshRender(renderer.gl, mesh, data);
+		renderer.addMeshRender(meshRender);
+	});
+	shadowMaterial.then((data) => {
+		let shadowMeshRender = new MeshRender(renderer.gl, mesh, data);
+		renderer.addShadowMeshRender(shadowMeshRender);
+	});
+}
+//Edit End
+以上是支持多光源的代码支撑，接下来就是添加光源了
+
+//engine.js
+
+// Add lights
+// light - is open shadow map == true
+let lightPos1 = [0, 80, 80];
+let focalPoint = [0, 0, 0];
+let lightUp = [0, 1, 0]
+//Edit Start 改一下第一个光源的亮度
+const directionLight = new DirectionalLight(2500, [1, 1, 1], lightPos1, focalPoint, lightUp, true, renderer.gl);
+//Edit End
+renderer.addLight(directionLight);
+
+//Edit Start 添加第二个光源
+let lightPos2 = [90, 90, 0];
+const directionLight2 = new DirectionalLight(2500, [1, 1, 1], lightPos2, focalPoint, lightUp, true, renderer.gl);
+renderer.addLight(directionLight2);
+//Edit End
+添加第二个光源，位置可以自由调整，但注意位置太远会脱离我们定义的渲染ShadowMap的视锥体，那样就无法绘制阴影了，为了防止画面太亮，我们也调整一下两个光源的亮度。
+
+//WebGLRenderer.js
+
+console.assert(this.lights.length != 0, "No light");
+//console.assert(this.lights.length == 1, "Multiple lights"); //取消多光源检测
+然后我们注释掉WebGLRenderer中一行光源数量检测（不知道作业框架加这个检测做什么）。
+
+//WebGLRenderer.js
+
+for (let l = 0; l < this.lights.length; l++) {
+    // set framebuffer ...
+
+    // Draw light
+    // TODO: Support all kinds of transform
+    //Edit Start 灯光围绕原点旋转
+    let lightRotateSpped = [10, 80]
+    let lightPos = this.lights[l].entity.lightPos;
+    lightPos = vec3.rotateY(lightPos, lightPos, this.lights[l].entity.focalPoint, degrees2Radians(lightRotateSpped[l]) * deltaime);
+    this.lights[l].entity.lightPos = lightPos; //给DirectionalLight的lightPos赋值新的位置，CalcLightMVP计算LightMVP需要用到
+    this.lights[l].meshRender.mesh.transform.translate = lightPos;
+    //Edit End
+    this.lights[l].meshRender.draw(this.camera);
+    
+
+    // Shadow pass
+    if (this.lights[l].entity.hasShadowMap == true) {
+        for (let i = 0; i < this.shadowMeshes.length; i++) {
+            if(this.shadowMeshes[i].material.lightIndex != l)
+                continue;// 是当前光源的材质才绘制，否则跳过
+
+            // set shader program ...
+            this.shadowMeshes[i].draw(this.camera);
+        }
+    }
+
+    // Edit Start 非第一个光源Pass时进行一些设置（Base Pass和Additional Pass区分）
+    if(l != 0)
+    {
+        // 开启混合，把Additional Pass混合到Base Pass结果上，否则会覆盖Base Pass的渲染结果
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+    }
+    // Edit End
+
+    // Camera pass
+    for (let i = 0; i < this.meshes.length; i++) {
+        if(this.meshes[i].material.lightIndex != l)
+            continue;// 是当前光源的材质才绘制，否则跳过
+        // set shader program ...
+        // Edit End
+        this.meshes[i].draw(this.camera);
+    }
+
+    // Edit Start 还原Additional Pass的设置
+    gl.disable(gl.BLEND);
+    // Edit End
+}
+最后添加动态多光源的核心实现，总结一下上面代码改动：
+
+实现光源围绕原点进行Y轴旋转，注意这里的旋转并不是模型变换里的旋转，这里旋转的结果是位置发生变化，最后真正产生了“旋转”的，是光照方向的朝向，其对应光源的观察变换。
+在Shadow Pass和Camera Pass中都判断一下当前MeshRender的材质的lightIndex与当前渲染中的光源的Index是否一致，不一致的跳过，不然会把不属于当前光源的MeshRender全部渲染一遍。
+由于是多光源绘制，我们需要把第二个及以后的光源的Camera Pass渲染结果都叠加到第一个光源的Camera Pass渲染结果上，需要开启混合，并以one one模式叠加，否则只能看到最后一个光源的渲染结果。
